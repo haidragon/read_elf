@@ -5,6 +5,7 @@
 //  Created by haidragon on 2020/7/17.
 //  Copyright © 2020 刘海龙. All rights reserved.
 //
+#include <dlfcn.h>
 #include <inttypes.h>
 #include <iostream>
 #include <sys/types.h>
@@ -1213,7 +1214,7 @@ void handle_symtab (Elf64_Shdr * symtab_header,int n){
     
 //    Elf64_Ehdr *Ehdr=(Elf64_Ehdr *)start_addr;
     //拿到偏移
-    Elf32_Sym* pSymMem=(Elf32_Sym*)((char*)start_addr+symtab_header->sh_offset);
+    Elf64_Sym* pSymMem=(Elf64_Sym*)((char*)start_addr+symtab_header->sh_offset);
     Elf64_Ehdr *Ehdr=(Elf64_Ehdr *)start_addr;
      
     //sh 所有表偏移
@@ -1223,9 +1224,6 @@ void handle_symtab (Elf64_Shdr * symtab_header,int n){
     //strtab addr
     char *strtab_start_addr=(char *)((char*)start_addr+strtab_header->sh_offset);
     
-//    Elf64_Shdr *shstr_table_header_addr=(Elf64_Shdr *)((char*)start_addr+Ehdr->e_shoff)+Ehdr->e_shstrndx;
-//              //拿到节表字符串表偏移
-//              char* shstr_table_addr=(char*)start_addr+shstr_table_header_addr->sh_offset;
     
     
     long long size=symtab_header->sh_size/symtab_header->sh_entsize;
@@ -1319,15 +1317,6 @@ void handle_symtab (Elf64_Shdr * symtab_header,int n){
                case STV_PROTECTED:
                    printf("%-10s","PROTECTED");
                    break;
-//               case STV_EXPORTED:
-//                   printf("%-10s","EXPORTED");
-//                   break;
-//               case STV_SINGLETON:
-//                   printf("%-10s","SINGLETON");
-//                   break;
-//               case STV_ELIMINATE:
-//                   printf("%-10s","ELIMINATE");
-//                   break;
                default:
                    printf("%-10s","");
                    break;
@@ -1361,8 +1350,10 @@ void handle_symtab (Elf64_Shdr * symtab_header,int n){
                    printf("%-10d",pSymMem[i].st_shndx);
                    break;
                }
-    
-               printf("strtab_start_addr-index:%d",pSymMem[i].st_name);
+               Elf64_Sym temp=pSymMem[i];
+               if(pSymMem[i].st_name>0)
+                   printf("%s",(strtab_start_addr+pSymMem[i].st_name));
+ 
                printf("\n");
            }
 }
@@ -1484,10 +1475,127 @@ void print_symtab(){
 
              }while(0);
 }
-int fd=NULL;
+void print_text_opcode(){
+     do{
+                    if(start_addr==NULL){
+                        break;
+                    }
+                     Elf64_Ehdr *Ehdr=(Elf64_Ehdr *)start_addr;
+                     
+                     Elf64_Shdr *section_header_index=NULL;
+                    
+                     //拿到节表字符串表头偏移
+                     Elf64_Shdr *shstr_table_header_addr=(Elf64_Shdr *)((char*)start_addr+Ehdr->e_shoff)+Ehdr->e_shstrndx;
+                     //拿到节表字符串表偏移
+                     char* shstr_table_addr=(char*)start_addr+shstr_table_header_addr->sh_offset;
+                     for (int i=0;i<Ehdr->e_shnum; i++) {
+                          
+                         section_header_index=(Elf64_Shdr *)((char*)start_addr+Ehdr->e_shoff+sizeof(Elf64_Shdr)*i);
+                         char p_name[]=".mytext";
+                         char p_name_buf[100];
+                         //const char * s_name=(const char *)shstr_table_addr[section_header_index->sh_name];
+                         if(i>2){
+                             sprintf(p_name_buf,"%-20s",&shstr_table_addr[section_header_index->sh_name]);
+                             //printf("%s\n", p_name_buf);
+                             if((strstr((const char *)p_name_buf,(const char *)p_name)!=NULL)&&(section_header_index->sh_type==SHT_PROGBITS)){
+                                 //handle_symtab((Elf64_Shdr *)section_header_index,i);
+                                 //printf("xxx\n");
+                                 char* buffer=NULL;
+                                 buffer=(char*)malloc(section_header_index->sh_size+1);
+                                 if (buffer!=NULL) {
+                                     memcpy(buffer,(char*)start_addr+section_header_index->sh_offset,section_header_index->sh_size);
+                                     for (int i=0; i<=section_header_index->sh_size; i++) {
+                                         printf("%02x \n",(unsigned char)buffer[i]);
+                                         //printf("%02x \n",(char)buffer[i]);
+                                     }
+                                 }
+                                 free(buffer);
+                             }
+                         }
+                     }
 
-后面的字符串打印有写错需要自己修改
+                 }while(0);
+}
+struct Elf64_Func_s {
+    char *f_name;
+    Elf64_Off f_offset;
+    Elf64_Addr f_addr;
+};
+typedef struct Elf64_Func_s Elf64_Func;
+void handle_functions (Elf64_Shdr * symtab_header,int n){
+    
+//    Elf64_Ehdr *Ehdr=(Elf64_Ehdr *)start_addr;
+    //拿到偏移
+    Elf64_Sym* pSymMem=(Elf64_Sym*)((char*)start_addr+symtab_header->sh_offset);
+    Elf64_Ehdr *Ehdr=(Elf64_Ehdr *)start_addr;
+     
+    //sh 所有表偏移
+     Elf64_Shdr *shdr_start_addr=(Elf64_Shdr *)((char*)start_addr+Ehdr->e_shoff);
+    // link strtab
+    Elf64_Shdr* strtab_header= (Elf64_Shdr *)((char*)shdr_start_addr+sizeof(Elf64_Shdr)*symtab_header->sh_link);
+    //strtab addr
+    char *strtab_start_addr=(char *)((char*)start_addr+strtab_header->sh_offset);
+    
+    
+    
+    long long size=symtab_header->sh_size/symtab_header->sh_entsize;
+    long long i = 0;
+   printf("functions \n");
+   for(; i < size ; i++){
+       if((pSymMem[i].st_info & 0x0F) == STT_FUNC){
+           
+//           Elf64_Off get_func_offset(ELF *bin, Elf64_Addr f_addr, Elf64_Sym *sym) {
+//               Elf64_Shdr *shr = bin->shr[sym->st_shndx];
+//               return shr->sh_offset + (f_addr - shr->sh_addr);
+//           }
+//
+            printf("name:%-50s   addr:%-20x    offset:%-20x  opcode len:%-20x\n",strtab_start_addr+pSymMem[i].st_name,
+                   pSymMem[i].st_value,
+                   shdr_start_addr[pSymMem[i].st_shndx].sh_offset+(pSymMem[i].st_value-shdr_start_addr[pSymMem[i].st_shndx].sh_addr),
+                   pSymMem[i].st_size);
+       }
+//       Elf64_Sym temp=pSymMem[i];
+//       if(pSymMem[i].st_name>0)
+//           printf("%s",(strtab_start_addr+pSymMem[i].st_name));
+//
+//       printf("\n");
+   }
+}
+void enum_functions(){
+    do{
+       if(start_addr==NULL){
+           break;
+       }
+        Elf64_Ehdr *Ehdr=(Elf64_Ehdr *)start_addr;
+        
+        Elf64_Shdr *section_header_index=NULL;
+       
+        //拿到节表字符串表头偏移
+        Elf64_Shdr *shstr_table_header_addr=(Elf64_Shdr *)((char*)start_addr+Ehdr->e_shoff)+Ehdr->e_shstrndx;
+        //拿到节表字符串表偏移
+        char* shstr_table_addr=(char*)start_addr+shstr_table_header_addr->sh_offset;
+        for (int i=0;i<Ehdr->e_shnum; i++) {
+             
+            section_header_index=(Elf64_Shdr *)((char*)start_addr+Ehdr->e_shoff+sizeof(Elf64_Shdr)*i);
+            char p_name[]=".symtab";
+            char p_name_buf[100];
+            //const char * s_name=(const char *)shstr_table_addr[section_header_index->sh_name];
+            if(i>2){
+                sprintf(p_name_buf,"%-20s",&shstr_table_addr[section_header_index->sh_name]);
+                //printf("%s\n", p_name_buf);
+                if((strstr((const char *)p_name_buf,(const char *)p_name)!=NULL)&&(section_header_index->sh_type==SHT_SYMTAB)){
+                    handle_functions((Elf64_Shdr *)section_header_index,i);
+                }
+            }
+        }
+
+    }while(0);
+}
+int fd=NULL;
+//后面的字符串打印有写错需要自己修改
 int main(int argc, const char * argv[]) {
+    //dladdr
+    //dlinfo
     long long flength =0;
     fd = open("/Volumes/haidragon-E/haidragon_study/study_executable_file_formats/ELF/page3/shelldemo/libdylib.so",S_IRWXU);
      //fd = open("/Volumes/haidragon-E/haidragon_study/study_executable_file_formats/ELF/ls",S_IRWXU);
@@ -1506,7 +1614,8 @@ int main(int argc, const char * argv[]) {
         print_rel();
         print_dynstr();
         print_symtab();
-        //enum_functions();
+        print_text_opcode();
+        enum_functions();
         
     }while (0);
     close(fd);
@@ -1559,3 +1668,39 @@ int main(int argc, const char * argv[]) {
 //[13 ]      __libc_start_main
 //[14 ]      GLIBC_2.2.5
 //[15 ]
+
+ 
+//* --- 1. ELF 介绍.mp4
+//* --- 2. ELF 打印文件头信息.mp4
+//* --- 3. ELF 打印程序头信息.mp4
+//* --- 4. ELF 打印节表头信息.mp4
+//* --- 5. ELF 打印动态节信息(dynamic dynstr).mp4
+//* --- 6. ELF 打印重定位表(rela).mp4
+//* --- 7. ELF 打印重定位表(rel).mp4
+//* --- 8. ELF 打印符号表(symtab).mp4
+//* --- 9. ELF dump plt/got函数.mp4
+//* --- 10. 获取内存中ELF模块.mp4
+//* --- 11. 内存中ELF与实体文件区别(装载).mp4
+//* --- 12. 打印内存中ELF信息.mp4
+//* --- 13. 打印内存中的ELF代码段.mp4
+//* --- 14. 劫持执行文件入口函数.mp4
+//* --- 15. 无依赖shellcode编写.mp4
+//* --- 16. ELF代码段抽取.mp4
+//* --- 17. ELF代码运行前代码段还原.mp4
+//* --- 18. ELF函数地址查找.mp4
+//* --- 19. ELF单个函数抽取.mp4
+//* --- 20. ELF单个函数运行前还原.mp4
+//* --- 21. ELF单个函数运行后抽取.mp4
+//* --- 22. UPX实现介绍.mp4
+//* --- 23. ELF添加节实现.mp4
+//* --- 24. opcode反汇编原理.mp4
+//* --- 25. 虚拟指令(vmp)原理.mp4
+//* --- 26. ELF函数虚拟执行实现.mp4
+//* --- 27. ELF装载器实现(上).mp4
+//* --- 28. ELF装载器实现(下).mp4
+//* --- 29. so模块隐藏实现.mp4
+// 
+
+
+
+
